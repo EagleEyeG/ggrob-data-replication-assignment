@@ -1,0 +1,28 @@
+---
+title: Reanalysis of M Vallejo-Marin and GC Lye (2012) Hybridisation and genetic diversity
+  in introduced Mimulus (Phrymaceae)
+author: "Gianna Grob"
+date: "10/3/2019"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(
+   echo = TRUE,
+   warning = FALSE,
+   comment = "##",
+   prompt = TRUE,
+   tidy = TRUE,
+   tidy.opts = list(width.cutoff = 75),
+   fig.path = "img/"
+ )
+```
+
+
+
+***
+
+# Introduction
+
+***
+
