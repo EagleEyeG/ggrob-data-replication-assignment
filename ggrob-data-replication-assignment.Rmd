@@ -1,12 +1,16 @@
 ---
-title: Reanalysis of M Vallejo-Marin and GC Lye (2012) Hybridisation and genetic diversity
-  in introduced Mimulus (Phrymaceae)
-author: "Gianna Grob"
-date: "10/3/2019"
-output: html_document
+title: Reanalysis of Wultsch et al. (2016) "Genetic Diversity and Population Structure of Mesoamerican Jaguars (Panthera onca) Implications for Conservation and Management"
+author: Gianna Grob
+date: 12/16/19
+output:
+  prettydoc::html_pretty:
+    theme: leonids 
+    highlight: github
+    toc: true 
+    toc_depth: 4 
 ---
 
-```{r}
+```{r setup, include=FALSE} 
 knitr::opts_chunk$set(
    echo = TRUE,
    warning = FALSE,
@@ -18,6 +22,11 @@ knitr::opts_chunk$set(
  )
 ```
 
+<center>
+
+![](/Users/eagle/OneDrive/Documents/GitHub/ggrob-data-replication-assignment/img/Jaguar.png)  
+
+</center>
 
 
 ***
@@ -26,3 +35,666 @@ knitr::opts_chunk$set(
 
 ***
 
+Wultsch et al. examined the genetic diversity and population strucutre of Mesoamerican jaguars (*Panthera onca*) for five different countries, including: Belize, Costa Rica, Gautemala, Honduras, and Mexico. They collected and genotyped 445 jaguar fecal samples and looked at 115 individuals using 12 microsatellite loci. They found moderate levels of genetic variation, and their analyses on population structure found significant clustering of the populations based on location, with four clusters total. Their purpose for this work was to highlight the need for more conservation efforts for this species.
+
+In this module, we will be attempting to replicate three of their analyses in R: Indices of genetic diversity with {diveRsity} and {hierfstat}, Principal Components Analysis with {adegenet}, and a Mantel test with {ecodist}. We will compare our results with theirs to not only examine their accuracy, but to also understand the code and concepts behind these analyses. Let's see if we can ***spot*** any differences!
+
+<center>
+
+![](/Users/eagle/OneDrive/Documents/GitHub/ggrob-data-replication-assignment/img/Spotted.jpg)  
+
+</center>
+
+
+***
+
+# Analysis Replication 
+
+*** 
+
+## Loading in the data
+
+First, we will clear the environment to allow for an empty slate every time we want to run all of the code.
+
+```{r}
+rm(list=ls()) #Clear environment
+```
+
+**NOTE:** All necessary files are located in the [public repository](https://github.com/EagleEyeG/ggrob-data-replication-assignment) made for this replication module.
+
+Now, we will convert the downloaded STRUCTURE file (Wultsch et al_Structure_MAJags.str) into a GENIND object. This file is in typical STRUCTURE file format, with the microsatellite markers listed at the top. Each individual is listed in two rows with their genetic data in the three digit format. The population number goes in the second column. The researchers did not specify the populations in the original STRUCTURE file, so the data file was edited by changing the population column values of 1 to values of 1-5 depending on the population the individual was in. Values of "-9" indicate missing genotype data.   
+
+**NOTE:** While converting the file we will be asked if there are any extra columns that we want to be read. Since the columns we need for the identities of the individuals and populations are accounted for in the code we don't need to type anything in the console. Just press ENTER/RETURN! 
+
+```{r}
+library(adegenet) #Load the adegenet package
+
+JagsData <- read.structure("Wultsch et al_Structure_MAJags.str", n.ind = 115, n.loc = 12, onerowperind = FALSE, col.lab = 1, col.pop = 2, row.marknames = 1) #Use the read.Structure function within the adegenet package to convert our file to a GENIND object. We have 115 individuals, 12 markers, and have two rows per individual. Our population names are in column 1 and their values are in column 2.
+
+JagsData
+
+summary(JagsData) #See a summary of our GENIND object. 
+```
+
+Now that the data has been converted to a GENIND object, we can use it in the analyses. 
+
+## Indices of genetic diversity within {diveRsity} and {hierfstat}
+
+We will be replicating the paper's analyses for genetic diversity. The number of alleles (NA), observed (HO) and expected heterozygosities (HE) for each and across all microsatellite loci and sampling sites, rarified allelic richness (AR), and inbreeding coefficients (Fis) will be estimated using {diveRsity}. These statisitcs are important because they give researchers an idea of how diverse their populations are.
+
+Let's start by installing and loading necessary packages.
+
+```{r}
+library(diveRsity) #Load the packages
+
+library(hierfstat)
+
+library(graph4lg)
+
+library(dplyr)
+
+library(matrixStats)
+
+library(knitr)
+```
+
+Now, we will begin the analysis. The {diveRsity} package has a great functin called "divBasic", which will calculate all of the statistics needed. 
+
+The first thing we have to do is turn our STRUCTURE file into a GENEPOP file. This will be done using the package {graph4lg}. This package can convert a GENIND object into a GENEPOP file. We already created our GENIND object earlier when importing the data.
+
+```{r}
+genind_to_genepop(JagsData, output = "JagStats.txt") #Create a file with out data from our GENIND object
+```
+
+The file has been created as "JagStats.txt". This file will now be used in the analysis. 
+
+**Note:** This analysis will take a few moments to run.
+
+```{r}
+JagStatsResults <- divBasic(infile = "JagStats.txt", outfile = "JagStatsOutput", bootstraps = 1000) #Perform genetic diversity analysis with new file.
+```
+
+Great, we have results! Let's briefly explore this data we just collected. 
+
+```{r}
+names(JagStatsResults) #See the names of our lists
+
+names(JagStatsResults$mainTab) #See the names of the lists within "mainTab"
+
+JagStatsResults[["locus_pop_size"]] #See data for "locus_pop_size"
+
+JagStatsResults[["Allele_number"]] #See data for "Allele_number"
+
+JagStatsResults[["Allelic_richness"]] #See data for "Allelic_richness"
+```
+
+As we can see, we have mutliple objects contained within "JagStatsResults". All of these names are the statisitcs that the code calculated, except for "mainTab", which includes our individuals and their data in the 5 seperate populations. We can also see the values within each of our statistics. 
+
+Let's format this data to match the table from the paper.
+
+We need to seperate the data we want for the table. This means seperating the overall data for each of our variables per population, each into their own data frame. Then, we will combine the different components to make a final table. We do not need to use all of the statistics, only the "locus_pop_size" for number of individuals, "Allele_number" for the number of alleles, "Allelic_richness" for the rarified allele richness, "Ho" for observed heterozygosity, "He" for expected heterozygosity, and "fis" for the inbreeding coefficient. Those are the statsitics highlighted in the paper. 
+
+Before we begin, here is the table for an idea of what we will be creating. 
+
+<center>
+
+![Table 2 from the paper.](/Users/eagle/OneDrive/Documents/GitHub/ggrob-data-replication-assignment/img/Table-2.PNG) 
+
+</center> 
+
+**Locus_pop_size**  
+
+```{r}
+locuspopsize <- JagStatsResults$locus_pop_size #Create object with our values within it from the main data
+
+colnames(locuspopsize) =  c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica") #Name our columns to match the population countries
+
+locuspopsize <- as.data.frame(locuspopsize[13,1:5]) #create a dataframe with the data we need: the overall data for each population. The "overall" data is in row 13, and the population data is in columns 1-5.
+
+colnames(locuspopsize) = "n" #Name the column to match the paper's table
+
+locuspopsize #View our data frame
+```
+
+**Allele_number**
+
+```{r}
+allelenumber <- JagStatsResults$Allele_number #Create object with our values within it from the main data
+
+colnames(allelenumber) =  c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica") #Name our columns to match the population countries
+
+allelenumber <- as.data.frame(allelenumber[13,1:5]) #create a dataframe with the data we need: the overall data for each population. The "overall" data is in row 13, and the population data is in columns 1-5.
+
+colnames(allelenumber) = "N_A" #Name the column to match the paper's table
+
+allelenumber #View our data frame
+```
+
+As noticed with the table above, the allele numbers for the overall populations are very large compared to the paper's overall allele number values. After looking at our code for "Allele_number", it can be seen that the results include the number of alleles per locus, and then the total number of alleles for that population. After looking at the values in the table, it is obvious that the researchers used the mean number of alleles per locus versus the total amount. According to the documentation for the {diveRsity} package, the following is calculated and given for the "Alelle number": "A matrix containing the number of alleles observed per locus per population sample. Mean values across loci are also given." The issue here is that the mean values are not included in the data, only the total. This is an issue within the package code. 
+
+We will now edit our "allelenumber" object to not inlcude the overall data and then calculate the means for each population. This will be done with "colMeans" from base R.
+
+```{r}
+allelenumber <- JagStatsResults$Allele_number #Create object with our values within it from the main data
+
+colnames(allelenumber) =  c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica") #Name our columns to match the population countries
+
+allelenumber <- as.data.frame(allelenumber[1:12,1:5]) #Create a dataframe with the data we need: the data for each locus for each population. This data is in rows 1-12, and the population data is in columns 1-5.
+
+allelenumber #See our new object
+
+allelenumber_means <- colMeans(allelenumber) #Find the mean of each column using the data from each row per population
+
+allelenumber_means #See our means for number of alleles per population 
+
+allelenumber_means <- as.data.frame(allelenumber_means) #Turn this into a data frame
+
+colnames(allelenumber_means) = "N_A" #Name the column to be "N_A"
+
+allelenumber_means #See our data frame
+```
+
+Now we have the allele numbers we need for the table from the research paper.
+
+**Allelic_richness**
+
+```{r}
+allelerich <- JagStatsResults$Allelic_richness #Create object with our values within it from the main data
+
+colnames(allelerich) =  c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica") #Name our columns to match the population countries
+
+allelerich <- as.data.frame(allelerich[13,1:5]) #create a dataframe with the data we need: the overall data for each population. The "overall" data is in row 13, and the population data is in columns 1-5.
+
+colnames(allelerich) = "A_R" #Name the column to match the paper's table
+
+allelerich #View our data frame
+```
+
+**Ho**
+
+```{r}
+obshetero <- JagStatsResults$Ho #Create object with our values within it from the main data
+
+colnames(obshetero) =  c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica") #Name our columns to match the population countries
+
+obshetero <- as.data.frame(obshetero[13,1:5]) #create a dataframe with the data we need: the overall data for each population. The "overall" data is in row 13, and the population data is in columns 1-5.
+
+colnames(obshetero) = "H_o" #Name the column to match the paper's table
+
+obshetero #View our data frame
+```
+
+**He**
+
+```{r}
+expecthetero <- JagStatsResults$He #Create object with our values within it from the main data
+
+colnames(expecthetero) =  c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica") #Name our columns to match the population countries
+
+expecthetero <- as.data.frame(expecthetero[13,1:5]) #create a dataframe with the data we need: the overall data for each population. The "overall" data is in row 13, and the population data is in columns 1-5.
+
+colnames(expecthetero) = "H_e" #Name the column to match the paper's table
+
+expecthetero #View our data frame
+```
+
+**fis**
+
+Our "fis" is special compared to the other values because it has multiple sets of values within it in the form of data frames. Let's take a look at it.
+
+```{r}
+JagStatsResults[["fis"]]
+```
+
+This is going to take some extra data manipulation to get it into the table format we want. We will not be able to exactly replicate the figure, with the parentheses and such, but will make sure to include all the information.
+
+```{r}
+ciTable <- lapply(JagStatsResults$fis, function(x){
+  return(c(x["overall", "fis"], x["overall", "BC_lower_CI"],
+           x["overall", "BC_upper_CI"]))
+}) #Extract the relevant information from "fis"
+
+ciTable #Double check our work so far. Looks good!
+
+ciTable <- as.data.frame(do.call("rbind", ciTable)) #Convert data into a data frame 
+
+dimnames(ciTable) <- list(c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica"), c("F_is", "Lower", "Upper")) #Name our rows and columns
+
+ciTable #See our new table, it looks perfect!
+```
+
+### Calculating allelic richness and fis using {hierfstat}
+
+While the {diveRsity} package has the ability to calculate the allelic richness and inbreeding coefficient (fis) values and did, the researchers used the {hierfstat} package to calculate them instead. At first, I thought it would be fine to use the {diveRsity} package to calculate these statisitcs, but the above tables for those values do not match the table in the paper. To replicate this paper as accurately as possible, we will now use the {hierfstat} package to calculate these statisitcs, and use these in the table instead of our other data frames.
+
+**Allelic richness**
+
+Allelic richness can be easily calculated in this package with the "allelic.richness" function.
+
+```{r}
+allelerich_hierfstat <- allelic.richness(JagsData, diploid = TRUE) #Calculate our allelic richness, setting "diploid" to TRUE for the jaguars
+
+allelerich_hierfstat #See our data
+```
+
+Now that we have our data for allelic richnesss, we will edit it to get the overall means for each locus per population.
+
+```{r}
+allelerich_hierfstat <- allelerich_hierfstat$Ar #Extract the values we want
+
+colnames(allelerich_hierfstat) = c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica") #Name our columns to match the population countries
+
+allelerich_hierfstat_means <- colMeans(allelerich_hierfstat) #Calculate the column means
+
+allelerich_hierfstat_means <- as.data.frame(allelerich_hierfstat_means) #Turn our column means into a data frame
+
+colnames(allelerich_hierfstat_means) = "A_R" #Name the column to be "N_A"
+
+allelerich_hierfstat_means #See our data frame
+```
+
+This is a good sign! Our values here exactly match those in the paper's table. We can now calculate the Fis statistics with the expectation that they will also be the same.
+
+**fis**
+
+Now, we will calculate the inbreeding coefficient confidence intervals and coefficients using {hierfstat}. This will be done with the functions "boot.ppfis" and "basic.stats". "boot.ppfis" will perform bootstrapping over the loci of the population's fis. We will be performing 1,000 bootstraps per the paper's method.
+
+```{r}
+fis_hierfstat_boot <- boot.ppfis(JagsData, nboot = 1000, quant = c(0.025, 0.975), diploid = TRUE, dig = 2) #Calculate the 95% cIs for the fis with 1,000 bootstraps for a diploid creature
+
+fis_hierfstat_boot #See our confidence intervals 
+
+fis_hierfstat_boot <- fis_hierfstat_boot$fis.ci #Extract our CI values
+
+fis_hierfstat_boot <- as.data.frame(fis_hierfstat_boot) #Turn data into a data frame
+
+colnames(fis_hierfstat_boot) = c("LL", "UL") #Name our columns for the "lower limit" and "upper limit" of confidence intervals
+
+rownames(fis_hierfstat_boot) = c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica") #Name our rows to match the population countries
+
+fis_hierfstat_boot #See our new data frame
+```
+
+We have our confidence intervals now, which will be slightly different than the ones in the paper since they were bootstrapped, but they will be very close every time. Now, we need the the coefficients themselves, which will be calculated with the "basic.stats" function. This function calculates some other statisitcs as well, but we only need the fis values. 
+
+```{r}
+fis_hierfstat <- basic.stats(JagsData, diploid = TRUE, digits = 4) #Calculate statistics for the data with a diploid creature
+
+fis_hierfstat_values <- fis_hierfstat$Fis #Extract the "Fis" values
+
+colnames(fis_hierfstat_values) = c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica") #Name our columns to match the population countries
+
+fis_hierfstat_means <- colMeans(fis_hierfstat_values) #Calculate the column means of the data
+
+fis_hierfstat_means <- as.data.frame(fis_hierfstat_means) #Turn our data into a data frame
+
+colnames(fis_hierfstat_means) = "Fis" #Name the column to be "N_A"
+
+fis_hierfstat_means #See our data frame
+```
+
+Perfect, now we have coefficients that perfectly match those in the paper. We can use these data frames in our final table instead of the ones calculated with the {diveRsity} package.
+
+### Putting it all together - minus the "Total Mean" and "SD"
+
+Awesome! We now have all the components to make the table, expcept for the "Total Mean" and "SD". We wil calculcate these values once we know our values are similar to the paper. It's time to put them all together. We will do this with the {dplyr} package.
+
+```{r}
+StatsTable <- dplyr::bind_cols(locuspopsize, allelenumber_means, allelerich_hierfstat_means, obshetero, expecthetero, fis_hierfstat_means, fis_hierfstat_boot) #Create table merging our columns.
+
+rownames(StatsTable) = c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica") #Looks like our new table got rid of the row names, we can add them here.
+
+StatsTable #See our table.  
+```
+
+Our results look good so far! We will now calculate the means and standard deviations for all of our columns, and add them to the table for the final product. 
+
+### Means
+
+We will first calculate the means of all variables with the function "colMeans".
+
+**Number of individuals** 
+
+Since there is no value for this, we will make an object that has a value of "NA".
+
+```{r}
+totalmeanN <- "NA"
+totalmeanN
+```
+
+**Number of alleles**
+
+```{r}
+totalmeanNA <- colMeans(allelenumber_means)
+
+totalmeanNA
+```
+
+**Allelic richness**
+
+```{r}
+totalmeanAR <- colMeans(allelerich_hierfstat_means)
+
+totalmeanAR
+```
+
+
+**Ho**
+
+```{r}
+totalmeanHo <- colMeans(obshetero)
+
+totalmeanHo
+```
+
+**He**
+
+```{r}
+totalmeanHe <- colMeans(expecthetero)
+
+totalmeanHe
+```
+
+
+**fis**
+
+```{r}
+totalmeanfis <- colMeans(fis_hierfstat_means)
+
+totalmeanfis
+```
+
+**fis "LL"**
+
+Since there is no value for this, we will make an object that has a value of "NA".
+
+```{r}
+totalmeanLL <- "NA"
+totalmeanLL
+```
+
+**fis "UL"**
+
+Since there is no value for this, we will make an object that has a value of "NA".
+
+```{r}
+totalmeanUL <- "NA"
+totalmeanUL
+```
+
+#### Putting the means together
+
+Now that we have all of our means, we will put them together into a data frame.
+
+```{r}
+totalmean <- c(totalmeanN, totalmeanNA, totalmeanAR, totalmeanHo, totalmeanHe, totalmeanfis, totalmeanLL, totalmeanUL) #Combine our values into a list
+
+totalmean <- as.data.frame(t(totalmean)) #Turn it into a data frame and transpose the rows to become columns
+
+rownames(totalmean) <- c("Total Mean") #Name our row
+
+colnames(totalmean) <- c("n", "N_A", "A_R", "H_o", "H_e", "Fis", "LL", "UL") #Name our columns
+
+totalmean 
+```
+
+
+### Standard Deviations
+
+Our final step before finishing this table is calculating the standard deviations for our variables. To find the standard deviations of our columns easily, we will use the {matrixStats} package. This does require our data frames to turn into matrices, but that can be easily done with the "as.matrix" function. "colSds" will give us our standard deviations for our columns.
+
+**Number of individuals**
+
+Since there is no value for this, we will make an object that has a value of "NA".
+
+```{r}
+totalSDN <- "NA"
+totalSDN
+```
+
+
+**Number of alleles**
+
+```{r}
+totalSDNA <- as.matrix(allelenumber_means)
+
+totalSDNA <- colSds(totalSDNA)
+
+totalSDNA
+```
+
+**Allelic richness**
+
+```{r}
+totalSDAR <- as.matrix(allelerich_hierfstat_means)
+
+totalSDAR <- colSds(totalSDAR)
+
+totalSDAR
+```
+
+
+**Ho**
+
+```{r}
+totalSDHo <- as.matrix(obshetero)
+
+totalSDHo <- colSds(totalSDHo)
+
+totalSDHo
+```
+
+**He**
+
+```{r}
+totalSDHe <- as.matrix(expecthetero)
+
+totalSDHe <- colSds(totalSDHe)
+
+totalSDHe
+```
+
+
+**fis**
+
+```{r}
+totalSDFis <- as.matrix(fis_hierfstat_means)
+
+totalSDFis <- colSds(totalSDFis)
+
+totalSDFis
+```
+
+**fis "LL"**
+
+Since there is no value for this, we will make an object that has a value of "NA".
+
+```{r}
+totalSDLL <- "NA"
+
+totalSDLL
+```
+
+**fis "UL"**
+
+Since there is no value for this, we will make an object that has a value of "NA".
+
+```{r}
+totalSDUL <- "NA"
+
+totalSDUL
+```
+
+
+#### Putting the standard deviations together
+
+Now that we have all the standard deivations, we will put them together into a data frame.
+
+```{r}
+totalSD <- c(totalSDN, totalSDNA, totalSDAR, totalSDHo, totalSDHe, totalSDFis, totalSDLL, totalSDUL) #Combine all of our values into a list
+
+totalSD <- as.data.frame(t(totalSD)) #Turn it into a data frame and transpose the rows so they become columns
+
+rownames(totalSD) <- c("SD") #Name our row
+
+colnames(totalSD) <- c("n", "N_A", "A_R", "H_o", "H_e", "Fis", "LL", "UL") #Name our columns
+
+totalSD
+```
+
+### Putting it all together - final table
+
+Now that we officially have every variable we need, we will put them together in a final table.
+
+```{r}
+StatsTableFinal <- dplyr::bind_cols(locuspopsize, allelenumber_means, allelerich_hierfstat_means, obshetero, expecthetero, fis_hierfstat_means, fis_hierfstat_boot) #Create our base table without our new rows
+
+StatsTableFinal2 <- rbind(StatsTableFinal, totalmean, totalSD) #Bind our new rows to our table with "rbind"
+
+rownames(StatsTableFinal2) = c("Mexico", "Guatemala", "Belize", "Honduras", "Costa Rica", "Total Mean", "SD") #Looks like our new table got rid of the row names, we can add them here.
+
+kable(StatsTableFinal2) #Make our data frame into a table that will shown up within the html file with the {knitr} package 
+```
+
+Our table is complete! The values completely match those of the research paper, except for the confidence interval limits, which are barely off due to bootstrapping. Here is the table again for comparison. The number of individuals also do not completely match. The researchers most likely just used the exact numbers of individuals they collected samples from, while the caclculations were not completely correct.
+
+<center>
+
+![Table 2 from the paper.](/Users/eagle/OneDrive/Documents/GitHub/ggrob-data-replication-assignment/img/Table-2.PNG) 
+
+</center> 
+
+Results from the "Genetic diversity, Hardy-Weinberg equilibrium and linkage disequilibrium" section:
+
+"Overall, Mesoamerican jaguars exhibited moderate to high levels of genetic diversity across all loci, with NA of 4.50 (±1.05, SD), rarified AR of 3.43 (±0.22, SD), HO of 0.59 (±0.06, SD), and
+HE of 0.59 (±0.04, SD) (Table 2 and S1 Table). Genetic diversity estimates were highest for jaguars in Costa Rica, followed by Belize,Guatemala, Honduras, and Mexico (Table 2 and S1
+Table), but did not differ significantly across sampling sites (Kruskal–Wallis rank-sumtests: AR, H = 2.35, P = 0.673; He, H = 4.47, P = 0.346;) with the exception of NA (H = 13.56,
+P = 0.010). The global inbreeding coefficient was 0.05 (±0.09, SD), ranging from -0.08 to 0.13 at different sampling localities (Table 2 and S1 Table)." 
+
+## Principal Components Analysis (PCA) within {adegenet} 
+
+Principal components analysis is exremely popular with the population genetics community. PCA, as it is commonly known, reduces data by categorizing it into principal components. These components can be visualized to provide scientists with an idea of the clustering of their data. The jaguar researchers used a PCA to support their Bayesian clustering analysis in STRUCTURE. We will now replicate their analysis and see if our PCA visualization matches theirs.
+
+First, we have to remove missing data within the dataset.
+
+```{r}
+sum(is.na(JagsData$tab)) #See how many NAs we have in the dataset. We have 1,034 NAs.
+
+X <- scaleGen(JagsData, NA.method = "mean") #Remove NAs by scaling within the package.
+
+class(X) #See the class of our data, it is a matrix.
+
+dim(X) #See the amount of individuals we have and amount of alleles. There are 115 individuals and 90 alleles, which is correct based on our GENIND object.
+```
+
+The {adegenet} package has already been installed and loaded, so we can now perform the analysis.
+
+```{r}
+pca1 <- dudi.pca(X, center = FALSE, scale = FALSE, scannf = FALSE) #Run the PCA analysis with our data frame. Scaling is false to account for the fact we already scaled our data. 
+
+barplot(pca1$eig, main = "PCA eignevalues", col = heat.colors(90)) #Create a barplot of our PCA eignevalues.
+
+summary(pca1) #see summary of our analysis 
+```
+
+The analysis has been performed! Now, we are going to replicate the figure used in the paper by plotting these results.
+
+```{r}
+pop(JagsData) <- as.factor(c("Mexico", "Mexico", "Mexico", "Mexico", "Mexico", "Mexico", "Mexico", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Guatemala", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Belize", "Honduras", "Honduras", "Honduras", "Honduras", "Honduras", "Honduras", "Honduras", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica", "Costa Rica")) #Assign each of our individuals to their populations for clustering in the plot. 
+
+s.class(pca1$li, pop(JagsData), col = c("grey50", "red", "cadetblue3", "orange", "navyblue"), grid = FALSE) #Create scatterplot with PCA values. We will assign colors to each population to try to match the ones from the paper
+
+add.scatter.eig(pca1$eig[1:15], 3,1,2) #Add eigenvalues to the plot.
+```
+
+Below is the plot from the paper.
+
+<center>
+
+![Figure 5 from the paper.](/Users/eagle/OneDrive/Documents/GitHub/ggrob-data-replication-assignment/img/PCA-Plot.png)
+
+</center> 
+
+Awesome, our plots look the same (except for slight color differences of course)! The plots above show the relationships between the different populations by plotting the first two principal components that were calculated. The more intersecting they are, the more related and similar they are. For example, the Belize and Guatemala populations are heavily overapping. This means that they are more related to each other than to the Costa Rica jaguars, for example, who are totally seperate from them. 
+
+Results from the "Genetic structure" section:
+
+"In accordance with the Bayesian clustering analysis in STRUCTURE, the PCA plot showed that Selva Maya jaguars were clearly clustered
+into one group, while jaguars sampled in Mexico, Honduras, and Costa Rica formed separate genetic clusters, suggesting moderate genetic differentiation (Fig 5)."
+
+## Mantel tests within {ecodist}
+
+According to [Diniz-Filho et al.](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3873175/) "The comparison of genetic divergence or genetic distances, estimated by pairwise FST and related statistics, with geographical distances by Mantel test is one of the most popular approaches to evaluate spatial processes driving population structure." The purpose of the Mantel test is to test the association between two matrices, for example, genetic and geographical matrices. Wultsch et al. used the Mantel test to proivde statistical significance for the results they found using GenAIEx. They performed the test with Euclidean distances, which are the distances between two points in a straight line for their genetic data, and the coordinate data for the sites they collected samples at. We will now attempt to replicate their results.
+
+First, we will load the {ecodist} package.
+
+```{r}
+library(ecodist) #Load the package.
+```
+
+### Formatting the data
+
+In order to run the Mantel test, we have to first get the genetic and geographic Euclidean distance data. This will require the use of base R functions. {ecodist} does have functions to do this, but recommends it for smaller datasets. We can use the base code function "dist" to calculate the Euclidean distances for both.
+
+#### Genetic data
+
+```{r}
+distgenJag <- dist(JagsData, method = "euclidean") #Find the Euclidean genetic distance of our GENIND object.
+
+hist(distgenJag) #See a histogram of our genetic distances to view our data.
+```
+
+#### Geographic data
+
+The geographic data for this research was not already included as a file. Instead, coordinates are listed in the paper in the "Study sites and sampling information" section. I have put these coordinates into an Excel sheet and converted it into a csv file (Jags_Geo_Data_no_sites.csv) for the purpose of this analysis. The file includes the countries and converted latitude and longitude coordinates using an [online website](https://www.gps-coordinates.net/) that converts between coordinate types (the coordinates were originally in North and West format). We will now convert this data into a data frame for use within the {ecodist} package. 
+
+```{r}
+JagsGeo <- read.csv("Jags_Geo_Data_no_sites.csv", header = TRUE) #Read in the csv file.
+
+JagsGeo #See our new data frame 
+```
+
+We now have a data frame for our geographic data. We can now find the Euclidean distances.
+
+```{r}
+distgeoJag <- dist(JagsGeo, method = "euclidean") #Calculate the Euclidean distance
+
+hist(distgeoJag) #Use histogram to view data
+```
+
+Now that we have our distances calculated, we can run a Mantel test with these values.
+
+```{r, eval=FALSE}
+mantelJag <- mantel(distgeoJag ~ distgenJag, nperm = 1000) #Run Mantel tests with 1,000 permutations
+
+#Second attempt, without converting into Euclidean distances
+
+JagsDataMatrix <- as.matrix(JagsData) #Convert whole genetic dataset into a matrix
+
+JagsGeoMatrix <- as.matrix(JagsGeo) #Convert geographical data into a matrix
+
+mantelJag2 <- mantel(JagsGeoMatrix ~ JagsDataMatrix, nperm = 1000) #Attempt to run the Mantel test without calculating Euclidean distances
+```
+
+Neither of the attempts to perform the Mantel test worked. This is due to a different number of variables for each matrix. The Mantel test requires that the matrices have the same number of variables to test against. The researchers do not offer any information in the paper, or supplementary information at the end of the paper, about how they formatted data for and then performed this test. Without knowing this information, we will not be able to complete the test. We were able to calculate the Euclidean distances for the overall genetic and geographic data, but it is not easy to distinguish if that was the correct step or where to go from there. 
+
+Results from the "Genetic structure" section:
+
+"Across all samples, we found a significant IBD pattern (r = 0.375, P = 0.001) (Fig 6A). Mantel tests performed on a finer geographic scale indicated a significant correlation between
+genetic and geographic distances for jaguars within Mexico, northern Guatemala, and central Belize (r = 0.422, P = 0.001) (Fig 6B). We did not observe significant correlations between
+genetic and geographic distances of jaguars collected across other areas (northern Guatemala, central Belize, and Honduras, r = 0.089, P = 0.128, Fig 6C; Honduras and Costa Rica, r = 0.104,
+P = 0.167, Fig 6D), verifying that geographic distance was not the main factor driving genetic differentiation at these spatial scales."
+
+# Conclusion 
+
+With this module we have attempted to replicate three analyses from the Wultsch et al. (2016) "Genetic Diversity and Population Structure of Mesoamerican Jaguars (Panthera onca) Implications for Conservation and Management" paper. 
+
+We were able to successfully replicate the analyses for genetic diversity and the PCA, but our attempt to run the Mantel test was not successful. Despite this, we showed that it is possible to replicate a paper's analyses with a public dataset and limited information. With this knowledge, we can more easily run our own analyses on data, whether it be data we collect ourselves, or other public datasets. We even managed to ***spot*** an error within a package's code! 
+
+Thank you for running through this replication module!
+
+<center> 
+
+![](/Users/eagle/OneDrive/Documents/GitHub/ggrob-data-replication-assignment/img/Jaguar2.png)   
+
+</center> 
